@@ -1,0 +1,48 @@
+LangFlow - POC || Data Ingestion
+=============================================================================
+Narmadha - 
+	Database creation
+		URI - mongodb+srv://narmadhab:******@userstories.o3wz8ef.mongodb.net/?retryWrites=true&w=majority&appName=Userstories
+		      mongodb+srv://indumspmh_db_user:*******@cluster0.grejdpw.mongodb.net/?appName=Cluster0
+		Database Name:rag_userstories
+		collection:stories
+		Vector index:vector_index_stories
+		BM25 index:BM25_search
+Harinath -
+		JSON Files support for both BM25 & Vector 
+Sanjay - 
+	Implemented LangFlow with Narmadha's(Above) database details
+	Mistral API
+
+Others all contributed & supported/voice-overed
+
+
+
+LangChain || Data Retrieval
+============================================
+Harinath - 
+ - Prompt preparation & enhancement using chatgpt
+ - Frontend code changes & enhancing look & feel changes
+ - Testing the implementation across the requirement
+Indumathi & Gowri - Importing it to cast with copilot for project preparation
+Lalitha & Gowri - Internal Team - Final Code Reviewers & further validations.
+
+
+Team Contributors
+=========================
+Harinath
+Gowri
+Srinidhi
+Sanjay
+AnilKumar G
+Indumathi MSP
+Lalitha S
+Narmadha B
+Priyadarshini J
+Siva
+Vidhya
+
+TestLeaf Team Reviewer
+======================
+Shankar
+Sudharshan
