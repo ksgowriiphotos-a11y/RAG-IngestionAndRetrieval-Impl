@@ -2,7 +2,18 @@
 
 import { useState } from 'react';
 import React from 'react';
-import { RAGPipelineResponse, RankedStory } from '@/types';
+type RankedStory = {
+    _id: string;
+    content: string;
+    hybrid_score?: number | string;
+    [key: string]: any;
+};
+type RAGPipelineResponse = {
+    normalized_new_story: string;
+    refined_story?: string;
+    story_quality_score: number;
+    ranked_related_stories: RankedStory[];
+};
 import styles from '../../app/page.module.css';
 import { useRouter } from 'next/navigation';
 

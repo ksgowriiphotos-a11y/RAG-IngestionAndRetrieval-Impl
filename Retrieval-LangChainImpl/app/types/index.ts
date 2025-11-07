@@ -1,6 +1,8 @@
 export interface UserStory {
     _id?: string;
     content: string;
+    key?: string;
+    summary?: string;
     metadata: {
         description?: string;
         acceptanceCriteria?: string[] | string;
@@ -22,6 +24,11 @@ export interface RankedStory extends UserStory {
     vector_score_norm: number;
     bm25_score_norm: number;
     hybrid_score: number;
+    // optional enhanced fields
+    llm_score?: number;
+    llm_reason?: string;
+    evidence?: string;
+    hybrid_score_final?: number;
 }
 
 export interface RAGPipelineResponse {
@@ -34,10 +41,21 @@ export interface RAGPipelineResponse {
         message: string;
         details?: Record<string, any>;
     }>;
+    quality_breakdown?: Record<string, number>;
+    recommendations?: string[];
+    timings?: {
+        overall_ms?: number;
+        embedding_ms?: number;
+        search_ms?: number;
+        llm_scoring_ms?: number;
+        refinement_ms?: number;
+        quality_eval_ms?: number;
+    };
 }
 
 export interface RAGConfig {
     vectorWeight: number;
     bm25Weight: number;
+    hybridWeight?: number;
     topK: number;
 }

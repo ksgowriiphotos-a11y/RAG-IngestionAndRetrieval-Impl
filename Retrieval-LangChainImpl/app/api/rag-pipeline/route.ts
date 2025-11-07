@@ -4,9 +4,10 @@ import { RAGConfig, RAGPipelineResponse } from '@/app/types';
 import MistralClient from '@mistralai/mistralai';
 
 const DEFAULT_CONFIG: RAGConfig = {
-    vectorWeight: 0.7,
+    vectorWeight: 0.6,
     bm25Weight: 0.3,
-    topK: 5
+    hybridWeight: 0.1,
+    topK: 6
 };
 
 export async function POST(req: NextRequest) {
@@ -24,12 +25,16 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
-        // Normalize weights
-        const totalWeight = config.vectorWeight + config.bm25Weight;
+        // Normalize weights (vector, bm25, hybrid)
+        const v = config.vectorWeight ?? DEFAULT_CONFIG.vectorWeight;
+        const b = config.bm25Weight ?? DEFAULT_CONFIG.bm25Weight;
+        const h = config.hybridWeight ?? DEFAULT_CONFIG.hybridWeight ?? 0;
+        const totalWeight = v + b + h || 1;
         const normalizedConfig = {
             ...config,
-            vectorWeight: config.vectorWeight / totalWeight,
-            bm25Weight: config.bm25Weight / totalWeight
+            vectorWeight: v / totalWeight,
+            bm25Weight: b / totalWeight,
+            hybridWeight: h / totalWeight,
         };
 
         // Initialize Mistral client
@@ -63,34 +68,65 @@ export async function POST(req: NextRequest) {
             }
         };
 
-        // Generate embedding for the new story
-        const normalizedStory = normalizeStory(story);
-        const storyEmbedding = await embeddings.embedQuery(normalizedStory);
+    const startAll = Date.now();
+    // Generate embedding for the new story
+    const normalizedStory = normalizeStory(story);
+    const t1 = Date.now();
+    const storyEmbedding = await embeddings.embedQuery(normalizedStory);
+    const t2 = Date.now();
 
         // Connect to MongoDB
         const client = await clientPromise;
         const db = client.db('rag_userstories');
         const collection = db.collection('stories');
 
-        // Perform hybrid search
+        // Perform hybrid search and LLM-scoring
+        const searchStart = Date.now();
         const relatedStories = await performHybridSearch(
             collection,
             storyEmbedding,
             normalizedStory,
             normalizedConfig
         );
+        const searchEnd = Date.now();
 
-        // Calculate story quality score
-        const qualityScore = calculateStoryQuality(normalizedStory);
+        // Enhance ranking with LLM scoring and RAG insights
+        const llmStart = Date.now();
+        const enhanced = await enhanceWithLLM(
+            relatedStories,
+            normalizedStory,
+            mistral,
+            normalizedConfig
+        );
+        const llmEnd = Date.now();
+
+        // Calculate story quality score (detailed breakdown)
+        const qualityStart = Date.now();
+        const quality = await evaluateQualityDetailed(normalizedStory, mistral);
+        const qualityEnd = Date.now();
 
         // Refine the story using LangChain
+        const refineStart = Date.now();
         const refinedStory = await refineStory(normalizedStory);
+        const refineEnd = Date.now();
+
+        const endAll = Date.now();
 
         return NextResponse.json({
             normalized_new_story: normalizedStory,
             refined_story: refinedStory,
-            story_quality_score: qualityScore,
-            ranked_related_stories: relatedStories,
+            story_quality_score: quality.totalScore, // 0-100
+            quality_breakdown: quality.breakdown,
+            recommendations: quality.recommendations,
+            ranked_related_stories: enhanced.slice(0, config.topK || DEFAULT_CONFIG.topK),
+            timings: {
+                overall_ms: endAll - startAll,
+                embedding_ms: t2 - t1,
+                search_ms: searchEnd - searchStart,
+                llm_scoring_ms: llmEnd - llmStart,
+                refinement_ms: refineEnd - refineStart,
+                quality_eval_ms: qualityEnd - qualityStart
+            },
             errors: []
         });
 
@@ -224,6 +260,8 @@ async function performHybridSearch(
         const existing = mergedMap.get(id) || { 
             _id: doc._id, 
             content: doc.content, 
+            key: doc.storyId,
+            description: doc.description,
             metadata: doc.metadata,
             vector_score: 0,
             bm25_score: 0,
@@ -375,4 +413,183 @@ ACCEPTANCE_CRITERIA:
         // Fallback to original story if refinement fails
         return story;
     }
+}
+
+// Enhance each candidate using an LLM to produce a semantic similarity score and reasoning
+async function enhanceWithLLM(candidates: any[], query: string, mistral: any, config: RAGConfig) {
+    const enhanced: any[] = [];
+    for (const c of candidates) {
+        try {
+            const snippet = (c.content || '').slice(0, 400);
+            const prompt = `You are an assistant that scores how relevant a document excerpt is to a query user story.
+Query: "${query}"
+Excerpt: "${snippet}"
+
+Give a numeric relevance score between 0 and 1 (higher is more relevant) and a one-sentence reasoning. Respond in JSON like: {"llm_score":0.82, "reason":"..."}`;
+
+            const resp = await mistral.chat({
+                model: 'mistral-tiny',
+                messages: [{ role: 'user', content: prompt }]
+            });
+
+            const content = resp.choices?.[0]?.message?.content || '';
+            let llmScore = 0;
+            let reason = '';
+            try {
+                const jsonMatch = content.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    const parsed = JSON.parse(jsonMatch[0]);
+                    llmScore = Number(parsed.llm_score) || 0;
+                    reason = parsed.reason || '';
+                } else {
+                    // Try to extract number from text
+                    const numMatch = content.match(/([0](?:\.[0-9]+)?|1(?:\.0+)?)/);
+                    if (numMatch) llmScore = parseFloat(numMatch[1]);
+                    reason = content.substring(0, 300);
+                }
+            } catch (e) {
+                llmScore = 0;
+                reason = content.substring(0, 300);
+            }
+
+            // Final hybrid score: combine normalized vector/bm25 with LLM score
+            const vectorNorm = c.vector_score_norm ?? 0;
+            const bm25Norm = c.bm25_score_norm ?? 0;
+            const finalHybrid = (vectorNorm * config.vectorWeight) + (bm25Norm * config.bm25Weight) + ((config.hybridWeight ?? 0) * llmScore);
+
+            enhanced.push({
+                ...c,
+                evidence: snippet,
+                llm_score: llmScore,
+                llm_reason: reason,
+                hybrid_score_final: finalHybrid
+            });
+        } catch (err) {
+            console.error('LLM enhancement failed for doc', c._id, err);
+            enhanced.push({ ...c, llm_score: 0, llm_reason: 'LLM failed', hybrid_score_final: c.hybrid_score });
+        }
+    }
+
+    // Sort by hybrid_score_final descending
+    enhanced.sort((a, b) => (b.hybrid_score_final || 0) - (a.hybrid_score_final || 0));
+    return enhanced;
+}
+
+// Evaluate quality with detailed rubrics; returns breakdown (0-10) and recommendations
+async function evaluateQualityDetailed(story: string, mistral: any) {
+    // Build prompt with explicit structure requirements
+    const prompt = `Evaluate the following user story on a 0-10 scale for each parameter.
+RESPOND ONLY WITH A JSON OBJECT IN THIS EXACT FORMAT:
+{
+  "scores": {
+    "Completeness": <0-10>,
+    "Clarity": <0-10>,
+    "AcceptanceCriteria": <0-10>,
+    "Specificity": <0-10>,
+    "Structure": <0-10>
+  },
+  "recommendations": [
+    "<suggestion 1>",
+    "<suggestion 2>",
+    "<suggestion 3>"
+  ],
+  "comment": "<overall assessment>"
+}
+
+Story to evaluate: "${story}"`;
+
+    try {
+        const resp = await mistral.chat({
+            model: 'mistral-tiny',
+            messages: [{ role: 'user', content: prompt }]
+        });
+        
+        const content = resp.choices?.[0]?.message?.content || '';
+        
+        // Find the first JSON-like structure in the response
+        const jsonMatch = content.match(/\{[\s\S]*?\}(?=\s*$)/);
+        if (!jsonMatch) {
+            console.warn('No JSON found in response:', content);
+            throw new Error('Invalid response format');
+        }
+
+        let parsed;
+        try {
+            parsed = JSON.parse(jsonMatch[0]);
+        } catch (parseErr) {
+            console.warn('JSON parse failed:', jsonMatch[0]);
+            throw parseErr;
+        }
+
+        if (!parsed.scores) {
+            throw new Error('Missing scores in response');
+        }
+
+        const scores = parsed.scores;
+        const breakdown: any = {
+            Completeness: Number(scores.Completeness) || 0,
+            Clarity: Number(scores.Clarity) || 0,
+            AcceptanceCriteria: Number(scores.AcceptanceCriteria) || 0,
+            Specificity: Number(scores.Specificity) || 0,
+            Structure: Number(scores.Structure) || 0
+        };
+
+        // Validate scores are in range
+        Object.entries(breakdown).forEach(([key, value]) => {
+            if (typeof value !== 'number' || value < 0 || value > 10) {
+                breakdown[key] = 5; // Default to middle score for invalid values
+            }
+        });
+
+        const vals = Object.values(breakdown) as number[];
+        const total = Math.round((vals.reduce((a: number, b: number) => a + b, 0) / 50) * 100);
+        const recommendations: string[] = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+
+        return {
+            totalScore: total,
+            breakdown,
+            recommendations: recommendations.slice(0, 3), // Limit to top 3
+            comment: typeof parsed.comment === 'string' ? parsed.comment : ''
+        };
+    } catch (err) {
+        console.error('Quality evaluation failed:', err);
+        // Fallback to basic heuristic scoring
+        const breakdown: any = {
+            Completeness: /As a .+ I want .+ so that .+/i.test(story) ? 8 : 5,
+            Clarity: story.length > 40 ? 7 : 5,
+            AcceptanceCriteria: /acceptance criteria:/i.test(story) ? 8 : 3,
+            Specificity: /\d+|\buser\b|ui|click|select|enter/i.test(story) ? 6 : 4,
+            Structure: /As a|I want|so that/i.test(story) ? 8 : 5
+        };
+        const vals = Object.values(breakdown) as number[];
+        const total = Math.round((vals.reduce((a: number, b: number) => a + b, 0) / 50) * 100);
+        
+        return {
+            totalScore: total,
+            breakdown,
+            recommendations: [
+                'Add clear Given-When-Then acceptance criteria.',
+                'Include specific measurable outcomes.',
+                'Ensure all role/action/value segments are present.'
+            ],
+            comment: 'Scored using fallback heuristics due to LLM error'
+        };
+    }
+
+    // Fallback heuristic scoring
+    const breakdown: any = {
+        Completeness: /As a .+ I want .+ so that .+/i.test(story) ? 8 : 5,
+        Clarity: story.length > 40 ? 7 : 5,
+        AcceptanceCriteria: /acceptance criteria:/i.test(story) ? 8 : 3,
+        Specificity: /\d+|\buser\b|ui|click|select|enter/i.test(story) ? 6 : 4,
+        Structure: /As a|I want|so that/i.test(story) ? 8 : 5
+    };
+    const vals = Object.values(breakdown) as number[];
+    const total = Math.round((vals.reduce((a: number, b: number) => a + b, 0) / 50) * 100);
+    const recommendations = [];
+    if (breakdown.AcceptanceCriteria < 6) recommendations.push('Add clear Given-When-Then acceptance criteria.');
+    if (breakdown.Specificity < 6) recommendations.push('Add concrete examples and measurable conditions.');
+    if (breakdown.Completeness < 6) recommendations.push('Include missing role/action/value segments.');
+
+    return { totalScore: total, breakdown, recommendations, comment: 'heuristic fallback' };
 }
