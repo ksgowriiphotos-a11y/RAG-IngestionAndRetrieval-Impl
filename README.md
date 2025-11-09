@@ -407,7 +407,7 @@ Contributions are welcome! Please read our contributing guidelines and submit pu
 ```mermaid
 flowchart TD
     %% Main concept
-    RAG((RAG Pipeline<br/>Project))
+    RAG((RAG Pipeline<br/>Project<br/>/Retrieval-LangChainImpl))
     style RAG fill:#4A90E2,stroke:#2171C7,color:white
 
     %% Major Areas with different colors
@@ -438,60 +438,60 @@ flowchart TD
     RAG --- VIZ
 
     %% UI Components
-    UI --- U1[Dashboard<br/>Interface]
-    UI --- U2[Story Search<br/>Form]
-    UI --- U3[Results<br/>Display]
-    UI --- U4[CSV Upload<br/>Interface]
+    UI --- U1[Dashboard<br/>Interface<br/>/app/page.tsx]
+    UI --- U2[Story Search<br/>Form<br/>/app/userstory-rag/page.tsx]
+    UI --- U3[Results Display<br/>/components/UserStoryForm.tsx]
+    UI --- U4[CSV Upload<br/>/components/CSVIngestControl.tsx]
     style U1 fill:#FFE2E2,stroke:#FF6B6B
     style U2 fill:#FFE2E2,stroke:#FF6B6B
     style U3 fill:#FFE2E2,stroke:#FF6B6B
     style U4 fill:#FFE2E2,stroke:#FF6B6B
 
     %% Story Processing
-    STORY --- S1[Quality<br/>Scoring]
-    STORY --- S2[Format<br/>Validation]
-    STORY --- S3[Acceptance<br/>Criteria]
-    STORY --- S4[Story<br/>Refinement]
+    STORY --- S1[Quality Scoring<br/>/backend/api/rag-pipeline.ts]
+    STORY --- S2[Format Validation<br/>/scripts/csv_to_ingest.js]
+    STORY --- S3[Acceptance Criteria<br/>/backend/api/ingest.ts]
+    STORY --- S4[Story Refinement<br/>/app/api/rag-pipeline/route.ts]
     style S1 fill:#E2FFE9,stroke:#4ECE8B
     style S2 fill:#E2FFE9,stroke:#4ECE8B
     style S3 fill:#E2FFE9,stroke:#4ECE8B
     style S4 fill:#E2FFE9,stroke:#4ECE8B
 
     %% Search Components
-    SEARCH --- SE1[Vector<br/>Search]
-    SEARCH --- SE2[BM25 Text<br/>Search]
-    SEARCH --- SE3[Hybrid<br/>Search]
-    SEARCH --- SE4[Result<br/>Ranking]
+    SEARCH --- SE1[Vector Search<br/>/backend/api/rag-pipeline.ts<br/>vectorindex-mistral]
+    SEARCH --- SE2[BM25 Text Search<br/>/backend/api/rag-pipeline.ts<br/>bm25-index]
+    SEARCH --- SE3[Hybrid Search<br/>/backend/api/rag-pipeline.ts<br/>hybrid-search-impl]
+    SEARCH --- SE4[Result Ranking<br/>/app/api/rag-pipeline/route.ts]
     style SE1 fill:#F0E5FF,stroke:#A679DE
     style SE2 fill:#F0E5FF,stroke:#A679DE
     style SE3 fill:#F0E5FF,stroke:#A679DE
     style SE4 fill:#F0E5FF,stroke:#A679DE
 
     %% Database Components
-    DB --- D1[Story<br/>Collection]
-    DB --- D2[Vector<br/>Storage]
-    DB --- D3[Indexes &<br/>Queries]
-    DB --- D4[Data<br/>Schema]
+    DB --- D1[Story Collection<br/>/backend/db/mongodb.ts<br/>MONGODB_URI]
+    DB --- D2[Vector Storage<br/>/backend/db/mongodb-client.ts]
+    DB --- D3[Indexes & Queries<br/>/backend/db/mongodb-connect.ts]
+    DB --- D4[Data Schema<br/>/types/index.ts]
     style D1 fill:#FFE9D6,stroke:#FFA557
     style D2 fill:#FFE9D6,stroke:#FFA557
     style D3 fill:#FFE9D6,stroke:#FFA557
     style D4 fill:#FFE9D6,stroke:#FFA557
 
     %% AI Components
-    AI --- A1[Mistral AI<br/>Integration]
-    AI --- A2[Vector<br/>Embeddings]
-    AI --- A3[Semantic<br/>Analysis]
-    AI --- A4[LangChain<br/>Pipeline]
+    AI --- A1[Mistral AI Integration<br/>/types/mistralai.d.ts<br/>MISTRAL_API_KEY]
+    AI --- A2[Vector Embeddings<br/>/backend/api/rag-pipeline.ts<br/>mistral-embed-impl]
+    AI --- A3[Semantic Analysis<br/>/backend/api/rag-pipeline.ts]
+    AI --- A4[LangChain Pipeline<br/>/app/api/rag-pipeline/route.ts]
     style A1 fill:#E5F0FF,stroke:#6BAAFF
     style A2 fill:#E5F0FF,stroke:#6BAAFF
     style A3 fill:#E5F0FF,stroke:#6BAAFF
     style A4 fill:#E5F0FF,stroke:#6BAAFF
 
     %% Visualization Components
-    VIZ --- V1[Quality<br/>Metrics]
-    VIZ --- V2[Search<br/>Analytics]
-    VIZ --- V3[Performance<br/>Graphs]
-    VIZ --- V4[Radial<br/>Score]
+    VIZ --- V1[Quality Metrics<br/>/app/userstory-rag/page.tsx]
+    VIZ --- V2[Search Analytics<br/>/components/UserStoryForm.tsx]
+    VIZ --- V3[Performance Graphs<br/>/app/userstory-rag/page.tsx]
+    VIZ --- V4[Radial Score<br/>/app/userstory-rag/AnimatedRadialScore.tsx]
     style V1 fill:#FFE5F6,stroke:#FF8AD8
     style V2 fill:#FFE5F6,stroke:#FF8AD8
     style V3 fill:#FFE5F6,stroke:#FF8AD8
